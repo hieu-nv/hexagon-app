@@ -27,6 +27,9 @@ dependencies {
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("org.springframework.data:spring-data-rest-hal-explorer")
 	implementation("org.springframework.session:spring-session-core")
+	implementation("org.hibernate.orm:hibernate-community-dialects:7.0.0.Final")
+	implementation("org.xerial:sqlite-jdbc:3.50.1.0")
+
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
