@@ -1,9 +1,10 @@
 plugins {
     kotlin("jvm") version "1.9.25"
     kotlin("plugin.spring") version "1.9.25"
-    id("org.springframework.boot") version "3.5.0" apply true
-    id("io.spring.dependency-management") version "1.1.7"
     kotlin("plugin.jpa") version "1.9.25"
+    kotlin("plugin.allopen") version "1.9.25"
+    id("org.springframework.boot") version "3.5.3" apply true
+    id("io.spring.dependency-management") version "1.1.7"
 }
 
 group = "com.hieunv"
@@ -39,7 +40,7 @@ subprojects {
 
     dependencyManagement {
         imports {
-            mavenBom("org.springframework.boot:spring-boot-dependencies:3.5.0")
+            mavenBom("org.springframework.boot:spring-boot-dependencies:3.5.3")
         }
         dependencies {
             dependency("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9")

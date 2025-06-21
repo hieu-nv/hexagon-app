@@ -1,5 +1,7 @@
 plugins {
     kotlin("jvm")
+    kotlin("plugin.spring")
+    kotlin("plugin.jpa")
 }
 
 group = "com.hieunv"
@@ -11,9 +13,9 @@ repositories {
 
 dependencies {
     implementation(project(":core"))
-
-    implementation("org.hibernate.orm:hibernate-community-dialects")
-    implementation("org.xerial:sqlite-jdbc")
-//    implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+
+    runtimeOnly("org.hibernate.orm:hibernate-community-dialects")
+    runtimeOnly("org.xerial:sqlite-jdbc")
+
 }

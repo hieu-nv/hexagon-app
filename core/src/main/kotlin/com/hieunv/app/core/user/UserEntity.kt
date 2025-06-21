@@ -7,7 +7,7 @@ import jakarta.persistence.Table
 
 @Entity
 @Table(name = "users")
-open class UserEntity(
+class UserEntity(
     @Column(nullable = false, unique = true) val username: String = "",
 
     @Column(nullable = false) var password: String = "",
