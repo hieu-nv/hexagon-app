@@ -11,10 +11,9 @@ repositories {
 
 dependencies {
     implementation(project(":core"))
-//    implementation("org.springframework.boot:spring-boot-starter-security:3.5.0")
-    implementation("org.springframework.boot:spring-boot-starter-data-jpa:3.5.0")
-    implementation("org.jetbrains.kotlin:kotlin-reflect")
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 
-
+    implementation("org.hibernate.orm:hibernate-community-dialects")
+    implementation("org.xerial:sqlite-jdbc")
+//    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 }

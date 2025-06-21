@@ -1,5 +1,5 @@
-package com.hieunv.app.core.repository
-import com.hieunv.app.core.entity.UserEntity
+package com.hieunv.app.core.user
+
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.repository.NoRepositoryBean
 import java.util.UUID

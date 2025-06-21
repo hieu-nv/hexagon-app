@@ -1,5 +1,6 @@
-package com.hieunv.app.core.entity
+package com.hieunv.app.core.user
 
+import com.hieunv.app.core.entity.SystemEntity
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.Table
