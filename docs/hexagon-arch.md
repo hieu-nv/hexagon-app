@@ -27,17 +27,23 @@ hexagon-app/
 ├── api/                                # API Module
 │   └── src/main/kotlin/com/hieunv/app/
 │       ├── App.kt                      # Main application class
-│       └── user/                       # User feature REST controllers
+│       ├── user/                       # User feature REST controllers
+│       └── pokemon/                    # Pokemon feature REST controllers
 ├── core/                               # Core Module
 │   └── src/main/kotlin/com/hieunv/app/core/
 │       ├── entity/                     # Domain entities
-│       └── user/                       # User domain model and interfaces
+│       ├── user/                       # User domain model and interfaces
+│       └── pokemon/                    # Pokemon domain model and interfaces
 ├── data/                               # Data Module
 │   └── src/main/kotlin/com/hieunv/app/data/
 │       └── user/                       # User repository implementations
+├── gw/                                 # Gateway Module
+│   └── src/main/kotlin/com/hieunv/gw/
+│       ├── client/                     # API client implementations
+│       └── pokemon/                    # Pokemon gateway implementations
 ```
 
-Notice how the "user" feature is represented across all three modules, maintaining the hexagonal boundaries while keeping related functionality grouped by feature.
+Notice how each feature is represented across multiple modules, maintaining the hexagonal boundaries while keeping related functionality grouped by feature.
 
 ## Detailed Analysis of Each Module
 
@@ -260,26 +266,174 @@ class UserController(private val userService: UserService) {
 }
 ```
 
-## Benefits of Feature-Based Organization in Hexagonal Architecture
+### 4. Gateway Module - Secondary Adapter for External Services
 
-Traditional layered architectures typically organize code by technical concerns (controllers, services, repositories). However, with a feature-based approach in Hexagonal Architecture, we gain several advantages:
+The Gateway module is responsible for implementing interfaces defined in the core module that interact with external services or APIs. This module connects the domain to external systems.
 
-1. **Better Discoverability**: All code related to a specific feature is grouped together within each module, making it easier to find and understand
-2. **Improved Maintainability**: Changes to a feature typically affect related files, which are now located closer together
-3. **Enhanced Ownership**: Teams can take ownership of entire features across architectural boundaries
-4. **Easier Onboarding**: New developers can understand features holistically rather than having to jump between technical layers
-5. **Reduced Coupling**: Features are isolated from each other, minimizing cross-feature dependencies
+Let's look at how we interact with an external Pokemon API:
 
-## Data Flow in Hexagonal Architecture
+```kotlin
+// core/src/main/kotlin/com/hieunv/app/core/pokemon/Pokemon.kt
+package com.hieunv.app.core.pokemon
 
-Let's follow the flow of an HTTP request from start to finish:
+/**
+ * Data class representing a Pokémon.
+ */
+data class Pokemon(
+    val name: String = "", 
+    val url: String = ""
+)
+```
+
+```kotlin
+// core/src/main/kotlin/com/hieunv/app/core/pokemon/PokemonGateway.kt
+package com.hieunv.app.core.pokemon
+
+interface PokemonGateway {
+    /**
+     * Fetches a list of Pokémon.
+     *
+     * @param limit the maximum number of Pokémon to return
+     * @param offset the offset for pagination
+     * @return a list of Pokémon
+     */
+    fun fetchPokemonList(limit: Int, offset: Int): List<Pokemon?>?
+
+    /**
+     * Fetches details of a specific Pokémon by its ID.
+     *
+     * @param id the ID of the Pokémon
+     * @return details of the specified Pokémon
+     */
+    fun fetchPokemonById(id: Int): Pokemon?
+}
+```
+
+For handling API responses with nested structures, we created a wrapper class:
+
+```kotlin
+// gw/src/main/kotlin/com/hieunv/gw/client/Poke.kt
+package com.hieunv.gw.client
+
+/**
+ * Generic wrapper class for PokeAPI responses with pagination.
+ */
+data class Poke<T>(
+    val count: Int = 0,
+    val next: String? = null,
+    val previous: String? = null,
+    val results: List<T> = emptyList()
+)
+```
+
+We implemented a generic API client to handle HTTP requests:
+
+```kotlin
+// gw/src/main/kotlin/com/hieunv/gw/client/PokeClient.kt
+package com.hieunv.gw.client
+
+import org.springframework.core.ParameterizedTypeReference
+import org.springframework.http.HttpMethod
+import org.springframework.stereotype.Component
+import org.springframework.web.client.RestTemplate
+
+@Component
+class PokeClient(private val restTemplate: RestTemplate) {
+    /**
+     * Generic GET method with explicit ParameterizedTypeReference for handling nested generic types
+     */
+    fun <T> get(url: String, responseType: ParameterizedTypeReference<T>): T? {
+        return try {
+            val response = restTemplate.exchange(url, HttpMethod.GET, null, responseType)
+            response.body
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+}
+```
+
+Finally, we implemented the Pokemon gateway interface:
+
+```kotlin
+// gw/src/main/kotlin/com/hieunv/gw/pokemon/PokemonGateway.kt
+package com.hieunv.gw.pokemon
+
+import com.hieunv.app.core.pokemon.Pokemon
+import com.hieunv.gw.client.PokeClient
+import com.hieunv.gw.client.Poke
+import org.springframework.core.ParameterizedTypeReference
+import org.springframework.stereotype.Service
+
+@Service
+class PokemonGateway(private val pokeClient: PokeClient) : com.hieunv.app.core.pokemon.PokemonGateway {
+    override fun fetchPokemonList(limit: Int, offset: Int): List<Pokemon?>? {
+        val responseType = object : ParameterizedTypeReference<Poke<Map<String, Any>>>() {}
+        return pokeClient.get("https://pokeapi.co/api/v2/pokemon?limit=$limit&offset=$offset", responseType)
+            ?.results
+            ?.map { map -> 
+                mapToPokemon(map)
+            }
+    }
+
+    private fun mapToPokemon(map: Map<String, Any>?): Pokemon? {
+        if (map == null) return null
+        
+        val name = map["name"] as? String ?: ""
+        val url = map["url"] as? String ?: ""
+        return Pokemon(name, url)
+    }
+
+    override fun fetchPokemonById(id: Int): Pokemon? {
+        // Implementation for fetching a specific Pokemon
+        TODO("Not yet implemented")
+    }
+}
+```
+
+In the API module, we created a controller to expose Pokemon data:
+
+```kotlin
+// api/src/main/kotlin/com/hieunv/app/pokemon/PokemonController.kt
+package com.hieunv.app.pokemon
+
+import com.hieunv.app.core.pokemon.Pokemon
+import com.hieunv.app.core.pokemon.PokemonGateway
+import org.springframework.web.bind.annotation.*
+
+@RestController
+@RequestMapping("/api/v1/pokemon")
+class PokemonController(
+    private val pokemonGateway: PokemonGateway
+) {
+    @GetMapping
+    fun getPokemonList(
+        @RequestParam(defaultValue = "20") limit: Int,
+        @RequestParam(defaultValue = "0") offset: Int
+    ): List<Pokemon> {
+        return pokemonGateway.fetchPokemonList(limit, offset)?.filterNotNull() ?: emptyList()
+    }
+
+    @GetMapping("/{id}")
+    fun getPokemonById(@PathVariable id: Int): Pokemon? {
+        return pokemonGateway.fetchPokemonById(id)
+    }
+}
+```
+
+## Data Flow with External Services in Hexagonal Architecture
+
+Let's follow the flow of an HTTP request from start to finish, including external API integration:
 
 1. **HTTP Request** -> REST Controller in API Module (Primary Adapter)
 2. Controller converts DTO to Entity and calls the Service interface
 3. **Service** in Core Module processes business logic
 4. Service calls Repository interface to retrieve/save data
 5. **Repository Implementation** in Data Module (Secondary Adapter) performs database queries
-6. Data is returned in reverse order: Repository -> Service -> Controller -> HTTP Response
+6. For external API calls, the Service uses the Gateway interface
+7. **Gateway Implementation** in Gateway Module (Secondary Adapter) interacts with the external API
+8. Data is returned in reverse order: Repository/Gateway -> Service -> Controller -> HTTP Response
 
 ## Benefits of Hexagonal Architecture
 
