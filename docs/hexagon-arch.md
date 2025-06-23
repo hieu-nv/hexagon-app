@@ -49,71 +49,66 @@ Notice how each feature is represented across multiple modules, maintaining the 
 
 ### 1. Core Module - The Heart of the Architecture
 
-The Core module is the heart of the application, containing all business logic and domain rules. Most importantly, **this module has no dependencies on any external frameworks or libraries**.
+The Core module is the heart of the application, containing business logic and domain entities. In our implementation, we have JPA annotations in our core module for simplicity.
 
-Let's look at how we define a user entity:
+Let's look at our base entity class and user entity:
+
+```kotlin
+// core/src/main/kotlin/com/hieunv/app/core/entity/SystemEntity.kt
+package com.hieunv.app.core.entity
+
+import jakarta.persistence.Column
+import jakarta.persistence.Id
+import jakarta.persistence.MappedSuperclass
+import java.time.LocalDateTime
+import java.util.UUID
+
+@MappedSuperclass
+open class SystemEntity(
+    @Id val id: String = UUID.randomUUID().toString(),
+
+    @Column(nullable = false, name = "created_at") val createdAt: LocalDateTime = LocalDateTime.now(),
+
+    @Column(nullable = false, name = "updated_at") var updatedAt: LocalDateTime = LocalDateTime.now(),
+
+    @Column(nullable = false, name = "deleted_at") var deletedAt: LocalDateTime = LocalDateTime.now(),
+)
+```
 
 ```kotlin
 // core/src/main/kotlin/com/hieunv/app/core/user/UserEntity.kt
 package com.hieunv.app.core.user
 
-data class UserEntity(
-    val id: Long? = null,
-    val username: String,
-    val email: String,
-    val fullName: String
-)
+import com.hieunv.app.core.entity.SystemEntity
+import jakarta.persistence.Column
+import jakarta.persistence.Entity
+import jakarta.persistence.Table
+
+@Entity
+@Table(name = "users")
+class UserEntity(
+    @Column(nullable = false, unique = true) val username: String = "",
+
+    @Column(nullable = false) var password: String = "",
+
+    @Column(nullable = false) var enabled: Boolean = true,
+
+    ) : SystemEntity()
 ```
 
-Note that this class is a pure POJO (Plain Old Java Object), with no JPA annotations or any framework dependencies.
-
-Next, we define ports as interfaces:
+Next, we define the repository interface:
 
 ```kotlin
 // core/src/main/kotlin/com/hieunv/app/core/user/UserRepository.kt
 package com.hieunv.app.core.user
 
-interface UserRepository {
-    fun findAll(): List<UserEntity>
-    fun findById(id: Long): UserEntity?
-    fun save(user: UserEntity): UserEntity
-    fun deleteById(id: Long)
-}
-```
+import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.repository.NoRepositoryBean
+import java.util.UUID
 
-```kotlin
-// core/src/main/kotlin/com/hieunv/app/core/user/UserService.kt
-package com.hieunv.app.core.user
-
-interface UserService {
-    fun getAllUsers(): List<UserEntity>
-    fun getUserById(id: Long): UserEntity?
-    fun createUser(user: UserEntity): UserEntity
-    fun updateUser(id: Long, user: UserEntity): UserEntity
-    fun deleteUser(id: Long)
-}
-```
-
-And the service implementation:
-
-```kotlin
-// core/src/main/kotlin/com/hieunv/app/core/user/UserServiceImpl.kt
-package com.hieunv.app.core.user
-
-class UserServiceImpl(private val userRepository: UserRepository) : UserService {
-    override fun getAllUsers(): List<UserEntity> = userRepository.findAll()
-    
-    override fun getUserById(id: Long): UserEntity? = userRepository.findById(id)
-    
-    override fun createUser(user: UserEntity): UserEntity = userRepository.save(user)
-    
-    override fun updateUser(id: Long, user: UserEntity): UserEntity {
-        val existingUser = userRepository.findById(id) 
-            ?: throw IllegalArgumentException("User not found")
-        return userRepository.save(user.copy(id = id))
-    }
-    
-    override fun deleteUser(id: Long) = userRepository.deleteById(id)
+@NoRepositoryBean
+interface UserRepository : JpaRepository<UserEntity, UUID> {
+    override fun findAll(): List<UserEntity>
 }
 ```
 
@@ -122,147 +117,46 @@ class UserServiceImpl(private val userRepository: UserRepository) : UserService 
 The Data module is responsible for implementing repository interfaces defined in the core module. This module connects the domain to the database.
 
 ```kotlin
-// data/src/main/kotlin/com/hieunv/app/data/user/JpaUserRepository.kt
-package com.hieunv.app.data.user
-
-import org.springframework.data.jpa.repository.JpaRepository
-import org.springframework.stereotype.Repository
-
-@Repository
-interface JpaUserRepository : JpaRepository<UserJpaEntity, Long>
-```
-
-```kotlin
-// data/src/main/kotlin/com/hieunv/app/data/user/UserJpaEntity.kt
-package com.hieunv.app.data.user
-
-import jakarta.persistence.*
-
-@Entity
-@Table(name = "users")
-data class UserJpaEntity(
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long? = null,
-    
-    @Column(nullable = false, unique = true)
-    val username: String,
-    
-    @Column(nullable = false, unique = true)
-    val email: String,
-    
-    @Column(name = "full_name", nullable = false)
-    val fullName: String
-)
-```
-
-```kotlin
-// data/src/main/kotlin/com/hieunv/app/data/user/UserRepositoryImpl.kt
+// data/src/main/kotlin/com/hieunv/app/data/user/UserRepository.kt
 package com.hieunv.app.data.user
 
 import com.hieunv.app.core.user.UserEntity
 import com.hieunv.app.core.user.UserRepository
-import org.springframework.stereotype.Component
+import org.springframework.data.jpa.repository.Query
+import org.springframework.stereotype.Repository
 
-@Component
-class UserRepositoryImpl(private val jpaUserRepository: JpaUserRepository) : UserRepository {
-    override fun findAll(): List<UserEntity> =
-        jpaUserRepository.findAll().map { it.toDomain() }
-    
-    override fun findById(id: Long): UserEntity? =
-        jpaUserRepository.findById(id).orElse(null)?.toDomain()
-    
-    override fun save(user: UserEntity): UserEntity =
-        jpaUserRepository.save(user.toJpaEntity()).toDomain()
-    
-    override fun deleteById(id: Long) =
-        jpaUserRepository.deleteById(id)
-        
-    // Extension functions for mapping
-    private fun UserJpaEntity.toDomain() = UserEntity(
-        id = this.id,
-        username = this.username,
-        email = this.email,
-        fullName = this.fullName
-    )
-    
-    private fun UserEntity.toJpaEntity() = UserJpaEntity(
-        id = this.id,
-        username = this.username,
-        email = this.email,
-        fullName = this.fullName
-    )
+@Repository
+interface UserRepository : UserRepository {
+
+    @Query("SELECT u.* FROM users AS u", nativeQuery = true)
+    override fun findAll(): List<UserEntity>
 }
 ```
 
 ### 3. API Module - Primary Adapter
 
-The API module contains controllers and DTOs to handle HTTP requests and responses. This module connects the domain to users.
-
-```kotlin
-// api/src/main/kotlin/com/hieunv/app/user/UserDto.kt
-package com.hieunv.app.user
-
-data class UserDto(
-    val id: Long? = null,
-    val username: String,
-    val email: String,
-    val fullName: String
-)
-```
+The API module contains controllers that handle HTTP requests and responses, acting as the primary adapter in our hexagonal architecture. This module connects external users to our domain.
 
 ```kotlin
 // api/src/main/kotlin/com/hieunv/app/user/UserController.kt
 package com.hieunv.app.user
 
 import com.hieunv.app.core.user.UserEntity
-import com.hieunv.app.core.user.UserService
-import org.springframework.http.HttpStatus
-import org.springframework.http.ResponseEntity
-import org.springframework.web.bind.annotation.*
+import com.hieunv.app.core.user.UserRepository
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@RequestMapping("/api/users")
-class UserController(private val userService: UserService) {
-
+@RequestMapping("/api/v1/users")
+class UserController(
+    private val userRepository: UserRepository
+) {
     @GetMapping
-    fun getAllUsers(): List<UserDto> =
-        userService.getAllUsers().map { it.toDto() }
-    
-    @GetMapping("/{id}")
-    fun getUserById(@PathVariable id: Long): ResponseEntity<UserDto> {
-        val user = userService.getUserById(id) ?: return ResponseEntity.notFound().build()
-        return ResponseEntity.ok(user.toDto())
+    fun getAllUsers(): List<UserEntity> {
+        val users = userRepository.findAll()
+        return users
     }
-    
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    fun createUser(@RequestBody userDto: UserDto): UserDto =
-        userService.createUser(userDto.toDomain()).toDto()
-    
-    @PutMapping("/{id}")
-    fun updateUser(@PathVariable id: Long, @RequestBody userDto: UserDto): UserDto =
-        userService.updateUser(id, userDto.toDomain()).toDto()
-    
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun deleteUser(@PathVariable id: Long) =
-        userService.deleteUser(id)
-        
-    // Extension functions for mapping
-    private fun UserEntity.toDto() = UserDto(
-        id = this.id,
-        username = this.username,
-        email = this.email,
-        fullName = this.fullName
-    )
-    
-    private fun UserDto.toDomain() = UserEntity(
-        id = this.id,
-        username = this.username,
-        email = this.email,
-        fullName = this.fullName
-    )
 }
 ```
 
