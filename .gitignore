@@ -40,3 +40,6 @@ out/
 .kotlin
 .DS_Store
 app.db*
+
+local.properties
+gradle/gradle-daemon-jvm.properties

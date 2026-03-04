@@ -1,10 +1,7 @@
 package com.hieunv.app.core.user
 
-import org.springframework.data.jpa.repository.JpaRepository
-import org.springframework.data.repository.NoRepositoryBean
-import java.util.UUID
+import org.springframework.stereotype.Component
 
-@NoRepositoryBean
-interface UserRepository : JpaRepository<UserEntity, UUID> {
-    override fun findAll(): List<UserEntity>
+interface UserRepository {
+    fun findAll(): List<UserEntity>
 }

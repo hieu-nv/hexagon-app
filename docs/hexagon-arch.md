@@ -1,10 +1,10 @@
-# Understanding Hexagonal Architecture Through a Practical Application
+# Hexagonal Architecture in Practice: A Spring Boot + Kotlin Example
 
 ## Introduction
 
-In today's modern software development world, designing applications with scalability, maintainability, and flexibility has become more important than ever. One of the most notable architectural patterns is **Hexagonal Architecture** (also known as Ports and Adapters), introduced by Alistair Cockburn in 2005.
+If you've ever found your business logic tangled up with Spring annotations or JPA types, **Hexagonal Architecture** (also known as Ports and Adapters) is the cure. Introduced by Alistair Cockburn in 2005, it separates the core domain from all technical details — databases, HTTP, external APIs — so they can evolve independently.
 
-This article explains how Hexagonal Architecture works through a practical example - a Spring Boot application built with Kotlin. We'll examine code organization, design principles, and the benefits of adopting this architecture.
+This article walks through a practical Spring Boot + Kotlin implementation, examining the code organization, design decisions, and the benefits of adopting this architecture.
 
 ## What is Hexagonal Architecture?
 
@@ -14,7 +14,7 @@ Hexagonal Architecture is an architectural pattern that separates the core busin
 - **Ports**: interfaces allowing communication with the application
 - **Adapters**: specific implementations of ports, connecting the domain with the outside world
 
-![Hexagonal Architecture](https://herbertograca.com/wp-content/uploads/2018/11/070-explicit-architecture-svg.png?w=1100)
+![Hexagonal Architecture](./assets/what-is-hexagonal-architecture.png)
 
 ## Feature-Based Organization in Hexagonal Architecture
 
@@ -36,7 +36,9 @@ hexagon-app/
 │       └── pokemon/                    # Pokemon domain model and interfaces
 ├── data/                               # Data Module
 │   └── src/main/kotlin/com/hieunv/app/data/
-│       └── user/                       # User repository implementations
+│       └── user/
+│           ├── UserJpaRepository.kt    # Spring Data JPA interface (internal adapter)
+│           └── UserRepositoryImpl.kt   # Implements core's UserRepository port
 ├── gw/                                 # Gateway Module
 │   └── src/main/kotlin/com/hieunv/gw/
 │       ├── client/                     # API client implementations
@@ -71,7 +73,8 @@ open class SystemEntity(
 
     @Column(nullable = false, name = "updated_at") var updatedAt: LocalDateTime = LocalDateTime.now(),
 
-    @Column(nullable = false, name = "deleted_at") var deletedAt: LocalDateTime = LocalDateTime.now(),
+    // null = not deleted; set to a timestamp when the record is soft-deleted
+    @Column(name = "deleted_at") var deletedAt: LocalDateTime? = null,
 )
 ```
 
@@ -96,42 +99,87 @@ class UserEntity(
     ) : SystemEntity()
 ```
 
-Next, we define the repository interface:
+Next, we define the repository interface — the **port** through which the domain expresses its data needs. Notice that this is a pure Kotlin interface with **zero dependency on any JPA or Spring Data types**:
 
 ```kotlin
 // core/src/main/kotlin/com/hieunv/app/core/user/UserRepository.kt
 package com.hieunv.app.core.user
 
-import org.springframework.data.jpa.repository.JpaRepository
-import org.springframework.data.repository.NoRepositoryBean
-import java.util.UUID
-
-@NoRepositoryBean
-interface UserRepository : JpaRepository<UserEntity, UUID> {
-    override fun findAll(): List<UserEntity>
+interface UserRepository {
+    fun findAll(): List<UserEntity>
 }
 ```
+
+This is an important distinction from an earlier version of the project, where `UserRepository` extended `JpaRepository` directly. By keeping the port free of JPA, the core module has **zero infrastructure dependencies** — it doesn't know (or care) whether the data comes from a relational database, an in-memory store, or a remote service.
 
 ### 2. Data Module - Secondary Adapter
 
 The Data module is responsible for implementing repository interfaces defined in the core module. This module connects the domain to the database.
 
+With the core `UserRepository` now a pure domain interface, the Data module uses a **two-class pattern** to bridge the gap between the domain port and the JPA infrastructure:
+
+**Step 1 — `UserJpaRepository`**: A Spring Data JPA interface that handles all ORM/database concerns. It lives entirely inside the `data` module and is never exposed to the core.
+
 ```kotlin
-// data/src/main/kotlin/com/hieunv/app/data/user/UserRepository.kt
+// data/src/main/kotlin/com/hieunv/app/data/user/UserJpaRepository.kt
+package com.hieunv.app.data.user
+
+import com.hieunv.app.core.user.UserEntity
+import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.stereotype.Repository
+import java.util.UUID
+
+@Repository
+interface UserJpaRepository : JpaRepository<UserEntity, String> {
+    override fun findAll(): List<UserEntity>
+}
+```
+
+> **Note**: No `@Query` needed here — `JpaRepository.findAll()` already fetches all rows. Overriding it with a native SQL query would reduce portability without adding any value.
+
+**Step 2 — `UserRepositoryImpl`**: A `@Component` class that implements the core's `UserRepository` port by delegating to `UserJpaRepository`. This is the actual **secondary adapter** — the glue between the domain and Spring Data JPA.
+
+```kotlin
+// data/src/main/kotlin/com/hieunv/app/data/user/UserRepositoryImpl.kt
 package com.hieunv.app.data.user
 
 import com.hieunv.app.core.user.UserEntity
 import com.hieunv.app.core.user.UserRepository
-import org.springframework.data.jpa.repository.Query
-import org.springframework.stereotype.Repository
+import org.springframework.stereotype.Component
 
-@Repository
-interface UserRepository : UserRepository {
+@Component
+class UserRepositoryImpl(
+    private val userJpaRepository: UserJpaRepository
+) : UserRepository {
 
-    @Query("SELECT u.* FROM users AS u", nativeQuery = true)
-    override fun findAll(): List<UserEntity>
+    override fun findAll(): List<UserEntity> {
+        return userJpaRepository.findAll()
+    }
+
 }
 ```
+
+> **Why two classes?** This is the correct application of hexagonal architecture. `UserJpaRepository` is a pure JPA concern — it knows nothing about the domain port. `UserRepositoryImpl` is the adapter that bridges the two worlds. If you later swap JPA for MongoDB or a REST client, you only replace these two files; the core and all primary adapters remain untouched.
+
+Here's how the runtime call chain flows for a `GET /api/v1/users` request:
+
+```
+HTTP Request
+    │
+    ▼
+UserController              ← primary adapter  (api module)
+    │  injects UserRepository port (core)
+    ▼
+UserRepositoryImpl          ← secondary adapter (data module)
+    │  delegates to
+    ▼
+UserJpaRepository           ← Spring Data JPA  (data module, internal)
+    │
+    ▼
+ Database
+```
+
+The key insight: `UserController` only knows about the **port** (`UserRepository`). Spring's dependency injection wires in `UserRepositoryImpl` at runtime — this is the **Dependency Inversion Principle** in action.
 
 ### 3. API Module - Primary Adapter
 
@@ -153,12 +201,58 @@ class UserController(
     private val userRepository: UserRepository
 ) {
     @GetMapping
-    fun getAllUsers(): List<UserEntity> {
-        val users = userRepository.findAll()
-        return users
-    }
+    fun getAllUsers(): List<UserEntity> = userRepository.findAll()
 }
 ```
+
+> **Note**: The controller injects the `UserRepository` **port** defined in the core module — it has no knowledge of `UserRepositoryImpl` or `UserJpaRepository`. Spring's dependency injection wires the concrete adapter at runtime, which is dependency inversion in action.
+
+#### Going Further: Introducing a Use-Case Layer
+
+For simple CRUD, injecting the repository port directly into the controller is fine. But as business logic grows, it is common to introduce a dedicated **use-case interface** in the core module. The controller then drives the use case, which in turn drives the repository — keeping orchestration logic out of both the adapter and the entity.
+
+```kotlin
+// core/src/main/kotlin/com/hieunv/app/core/user/GetAllUsersUseCase.kt
+package com.hieunv.app.core.user
+
+interface GetAllUsersUseCase {
+    fun execute(): List<UserEntity>
+}
+```
+
+```kotlin
+// core/src/main/kotlin/com/hieunv/app/core/user/GetAllUsersUseCaseImpl.kt
+package com.hieunv.app.core.user
+
+import org.springframework.stereotype.Service
+
+@Service
+class GetAllUsersUseCaseImpl(
+    private val userRepository: UserRepository
+) : GetAllUsersUseCase {
+    override fun execute(): List<UserEntity> = userRepository.findAll()
+}
+```
+
+The controller would then inject `GetAllUsersUseCase` instead of `UserRepository` directly, and the call chain becomes:
+
+```
+HTTP Request
+    │
+    ▼
+UserController          ← primary adapter   (api module)
+    │  drives
+    ▼
+GetAllUsersUseCaseImpl  ← use case          (core module)
+    │  calls
+    ▼
+UserRepositoryImpl      ← secondary adapter (data module)
+    │
+    ▼
+ Database
+```
+
+This sample project keeps things simple by skipping the use-case layer, but the pattern is worth adopting once the business logic outgrows a single repository call.
 
 ### 4. Gateway Module - Secondary Adapter for External Services
 
@@ -174,8 +268,7 @@ package com.hieunv.app.core.pokemon
  * Data class representing a Pokémon.
  */
 data class Pokemon(
-    val name: String = "", 
-    val url: String = ""
+    val name: String = "", val url: String = ""
 )
 ```
 
@@ -192,14 +285,6 @@ interface PokemonGateway {
      * @return a list of Pokémon
      */
     fun fetchPokemonList(limit: Int, offset: Int): List<Pokemon?>?
-
-    /**
-     * Fetches details of a specific Pokémon by its ID.
-     *
-     * @param id the ID of the Pokémon
-     * @return details of the specified Pokémon
-     */
-    fun fetchPokemonById(id: Int): Pokemon?
 }
 ```
 
@@ -226,17 +311,20 @@ We implemented a generic API client to handle HTTP requests:
 // gw/src/main/kotlin/com/hieunv/gw/client/PokeClient.kt
 package com.hieunv.gw.client
 
+import org.springframework.boot.web.client.RestTemplateBuilder
 import org.springframework.core.ParameterizedTypeReference
 import org.springframework.http.HttpMethod
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestTemplate
 
 @Component
-class PokeClient(private val restTemplate: RestTemplate) {
+class PokeClient(private val restTemplateBuilder: RestTemplateBuilder) {
+    private val restTemplate: RestTemplate = restTemplateBuilder.build()
+
     /**
-     * Generic GET method with explicit ParameterizedTypeReference for handling nested generic types
+     * Generic GET operator — allows calling `pokeClient.get(url, type)` with full generic type safety.
      */
-    fun <T> get(url: String, responseType: ParameterizedTypeReference<T>): T? {
+    operator fun <T> get(url: String, responseType: ParameterizedTypeReference<T>): T? {
         return try {
             val response = restTemplate.exchange(url, HttpMethod.GET, null, responseType)
             response.body
@@ -248,40 +336,29 @@ class PokeClient(private val restTemplate: RestTemplate) {
 }
 ```
 
-Finally, we implemented the Pokemon gateway interface:
+> Using `RestTemplateBuilder` instead of injecting `RestTemplate` directly gives us a properly configured instance (timeouts, message converters, etc.) set up by Spring Boot's auto-configuration.
+
+Finally, we implemented the Pokemon gateway interface. Notice how it uses `Poke<Pokemon>` as the response type — Spring's `RestTemplate` with `ParameterizedTypeReference` handles the generic deserialization automatically:
 
 ```kotlin
 // gw/src/main/kotlin/com/hieunv/gw/pokemon/PokemonGateway.kt
 package com.hieunv.gw.pokemon
 
 import com.hieunv.app.core.pokemon.Pokemon
-import com.hieunv.gw.client.PokeClient
 import com.hieunv.gw.client.Poke
+import com.hieunv.gw.client.PokeClient
 import org.springframework.core.ParameterizedTypeReference
 import org.springframework.stereotype.Service
 
 @Service
 class PokemonGateway(private val pokeClient: PokeClient) : com.hieunv.app.core.pokemon.PokemonGateway {
-    override fun fetchPokemonList(limit: Int, offset: Int): List<Pokemon?>? {
-        val responseType = object : ParameterizedTypeReference<Poke<Map<String, Any>>>() {}
-        return pokeClient.get("https://pokeapi.co/api/v2/pokemon?limit=$limit&offset=$offset", responseType)
-            ?.results
-            ?.map { map -> 
-                mapToPokemon(map)
-            }
-    }
 
-    private fun mapToPokemon(map: Map<String, Any>?): Pokemon? {
-        if (map == null) return null
-        
-        val name = map["name"] as? String ?: ""
-        val url = map["url"] as? String ?: ""
-        return Pokemon(name, url)
-    }
-
-    override fun fetchPokemonById(id: Int): Pokemon? {
-        // Implementation for fetching a specific Pokemon
-        TODO("Not yet implemented")
+    override fun fetchPokemonList(
+        limit: Int, offset: Int
+    ): List<Pokemon?>? {
+        return pokeClient.get(
+            "https://pokeapi.co/api/v2/pokemon?limit=$limit&offset=$offset",
+            object : ParameterizedTypeReference<Poke<Pokemon>>() {})?.results
     }
 }
 ```
@@ -294,13 +371,23 @@ package com.hieunv.app.pokemon
 
 import com.hieunv.app.core.pokemon.Pokemon
 import com.hieunv.app.core.pokemon.PokemonGateway
-import org.springframework.web.bind.annotation.*
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api/v1/pokemon")
 class PokemonController(
     private val pokemonGateway: PokemonGateway
 ) {
+    /**
+     * Get a list of Pokemon with pagination support
+     *
+     * @param limit maximum number of Pokemon to return (default: 20)
+     * @param offset the offset for pagination (default: 0)
+     * @return a list of Pokemon
+     */
     @GetMapping
     fun getPokemonList(
         @RequestParam(defaultValue = "20") limit: Int,
@@ -308,26 +395,65 @@ class PokemonController(
     ): List<Pokemon> {
         return pokemonGateway.fetchPokemonList(limit, offset)?.filterNotNull() ?: emptyList()
     }
-
-    @GetMapping("/{id}")
-    fun getPokemonById(@PathVariable id: Int): Pokemon? {
-        return pokemonGateway.fetchPokemonById(id)
-    }
 }
 ```
 
-## Data Flow with External Services in Hexagonal Architecture
+## Module Dependency Overview
 
-Let's follow the flow of an HTTP request from start to finish, including external API integration:
+Before tracing the data flow, it helps to visualize how our modules depend on each other:
 
-1. **HTTP Request** -> REST Controller in API Module (Primary Adapter)
-2. Controller converts DTO to Entity and calls the Service interface
-3. **Service** in Core Module processes business logic
-4. Service calls Repository interface to retrieve/save data
-5. **Repository Implementation** in Data Module (Secondary Adapter) performs database queries
-6. For external API calls, the Service uses the Gateway interface
-7. **Gateway Implementation** in Gateway Module (Secondary Adapter) interacts with the external API
-8. Data is returned in reverse order: Repository/Gateway -> Service -> Controller -> HTTP Response
+
+![Module Dependency Overview](./assets/module-dependency-overview.png)
+
+The `core` module has **zero dependencies** on other modules — it is the stable center. All other modules depend on core, never the other way around.
+
+## Data Flow in Hexagonal Architecture
+
+Our two features demonstrate both flavours of secondary adapter: a **database adapter** and an **external API adapter**. Let's trace each call chain separately.
+
+### Flow 1 — `GET /api/v1/users` (Database)
+
+```
+HTTP GET /api/v1/users
+    │
+    ▼
+UserController              ← primary adapter  (api module)
+    │  calls UserRepository port (core)
+    ▼
+UserRepositoryImpl          ← secondary adapter (data module)
+    │  delegates to
+    ▼
+UserJpaRepository           ← Spring Data JPA   (data module, internal)
+    │
+    ▼
+ PostgreSQL / H2 Database
+    │
+    ▼  (result propagates back up)
+HTTP 200 OK  [ UserEntity, … ]
+```
+
+### Flow 2 — `GET /api/v1/pokemon` (External API)
+
+```
+HTTP GET /api/v1/pokemon?limit=20&offset=0
+    │
+    ▼
+PokemonController           ← primary adapter   (api module)
+    │  calls PokemonGateway port (core)
+    ▼
+PokemonGateway (impl)       ← secondary adapter (gw module)
+    │  uses
+    ▼
+PokeClient                  ← HTTP client        (gw module, internal)
+    │
+    ▼
+ https://pokeapi.co/api/v2/pokemon
+    │
+    ▼  (result propagates back up)
+HTTP 200 OK  [ Pokemon, … ]
+```
+
+In both cases the **primary adapter** (controller) only ever references the **core port** — it has no knowledge of whether data comes from a database, a remote API, or an in-memory stub. That is the key insight of hexagonal architecture.
 
 ## Benefits of Hexagonal Architecture
 
@@ -350,9 +476,11 @@ However, for smaller applications or prototypes, this architectural pattern migh
 
 ## Conclusion
 
-Hexagonal Architecture provides a structured approach to organizing code, separating the core domain from technical details. Our sample project with three clear modules (api, core, data) demonstrates how to implement this architectural pattern in practice, with an emphasis on feature-based organization.
+Hexagonal Architecture provides a structured approach to organizing code, separating the core domain from technical details. Our sample project with four clear modules — **api**, **core**, **data**, and **gw** — demonstrates how to implement this pattern in practice, with an emphasis on feature-based organization.
 
-The main benefits are maintainability, adaptability to change, and good testability. However, it requires some initial effort to set up the project structure and adhere to the principles of the architecture.
+The `core` module defines what the application *is* (domain entities and port interfaces). The `api`, `data`, and `gw` modules define how the application *connects* to the outside world (primary and secondary adapters). Nothing in `core` ever depends on the other modules, which is what makes the architecture resilient to change.
+
+The main benefits are maintainability, adaptability to change, and excellent testability. However, it requires some initial setup effort and team discipline to consistently respect the port/adapter boundaries.
 
 If you're developing a complex application with high requirements for maintenance and scalability, and you value organizing code by features rather than technical layers, Hexagonal Architecture is definitely worth considering.
 
