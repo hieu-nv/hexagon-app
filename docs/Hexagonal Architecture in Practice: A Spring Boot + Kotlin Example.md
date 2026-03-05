@@ -84,34 +84,51 @@ interface UserRepository {
 }
 ```
 
-In this implementation, we go a step further by introducing a **Service (Use-Case) layer** within the core module. In strict Hexagonal Architecture terminology, this `UserService` interface represents a **Primary Port** (or Driving Port), and its implementation (`UserServiceImpl`) represents a **Use-Case**. This layer orchestrates the domain logic:
+In this implementation, we go a step further by introducing a **Use-Case layer** within the core module. In strict Hexagonal Architecture terminology, this `UserUseCase` interface represents a **Primary Port** (or Driving Port), and its implementation (`UserUseCaseImpl`) represents a **Use-Case**. This layer orchestrates the domain logic:
 
 ```kotlin
-// core/src/main/kotlin/com/hieunv/app/core/user/UserService.kt
+// core/src/main/kotlin/com/hieunv/app/core/user/UserUseCase.kt
 package com.hieunv.app.core.user
 
-interface UserService {
+interface UserUseCase {
   fun findAll(): List<User>
 }
 ```
 
 ```kotlin
-// core/src/main/kotlin/com/hieunv/app/core/user/UserServiceImpl.kt
+// core/src/main/kotlin/com/hieunv/app/core/user/UserUseCaseImpl.kt
 package com.hieunv.app.core.user
 
-import org.springframework.stereotype.Component
-
-@Component
-class UserServiceImpl(
+class UserUseCaseImpl(
   private val userRepository: UserRepository
-) : UserService {
+) : UserUseCase {
   override fun findAll(): List<User> {
     return userRepository.findAll()
   }
 }
 ```
 
-> **Note on Strictness vs Pragmatism:** In the absolute strictest interpretation of Hexagonal Architecture, the `core` module should have zero framework dependencies (not even Spring's `@Component`). Instead, beans would be wired in a separate configuration class outside the core. However, using `@Component` in the core is a very common and pragmatic compromise in Spring Boot applications to reduce configuration boilerplate.
+> **Note on Strictness:** In the absolute strictest interpretation of Hexagonal Architecture, the `core` module should have zero framework dependencies (not even Spring's `@Component`). In this architecture, we adhere to this strictness. The `UserUseCaseImpl` contains no Spring annotations. Instead, the bean is wired in a separate configuration class (`DomainConfig`) outside the core module:
+
+```kotlin
+// api/src/main/kotlin/com/hieunv/app/config/DomainConfig.kt
+package com.hieunv.app.config
+
+import com.hieunv.app.core.user.UserRepository
+import com.hieunv.app.core.user.UserUseCase
+import com.hieunv.app.core.user.UserUseCaseImpl
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+
+@Configuration
+class DomainConfig {
+
+    @Bean
+    fun userUseCase(userRepository: UserRepository): UserUseCase {
+        return UserUseCaseImpl(userRepository)
+    }
+}
+```
 
 ### 2. Data Module - Secondary Adapter
 
@@ -188,14 +205,14 @@ private fun UserEntity.toDomain() = User(
 
 ### 3. API Module - Primary Adapter
 
-The API module contains controllers that handle HTTP requests. It interacts with the core through the `UserService` port.
+The API module contains controllers that handle HTTP requests. It interacts with the core through the `UserUseCase` port.
 
 ```kotlin
 // api/src/main/kotlin/com/hieunv/app/user/UserController.kt
 package com.hieunv.app.user
 
 import com.hieunv.app.core.user.User
-import com.hieunv.app.core.user.UserService
+import com.hieunv.app.core.user.UserUseCase
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -203,17 +220,17 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 @RequestMapping("/api/v1/users")
 class UserController(
-  private val userService: UserService
+  private val userUseCase: UserUseCase
 ) {
   @GetMapping
   fun getAllUsers(): List<User> {
-    return userService.findAll()
+    return userUseCase.findAll()
   }
 }
 ```
 
 The runtime call chain flows as follows:
-`UserController` (API) -> `UserService` (Core) -> `UserServiceImpl` (Core implements UserService) -> `UserRepository` (Core Port) -> `UserRepositoryImpl` (Data Adapter implements UserRepository) -> `UserJpaRepository` (JPA) -> Database.
+`UserController` (API) -> `UserUseCase` (Core) -> `UserUseCaseImpl` (Core implements UserUseCase) -> `UserRepository` (Core Port) -> `UserRepositoryImpl` (Data Adapter implements UserRepository) -> `UserJpaRepository` (JPA) -> Database.
 
 ![Hexagonal Architecture Call Chain](./assets/runtime-call-chain-flows.png)
 
@@ -403,10 +420,10 @@ Our two features demonstrate both flavours of secondary adapter: a **database ad
 HTTP GET /api/v1/users
     │
     ▼
-UserController              ← primary adapter  (api module) maps User to UserDto
-    │  calls UserService port (core)
+UserController              ← primary adapter  (api module)
+    │  calls UserUseCase port (core)
     ▼
-UserServiceImpl             ← use-case         (core module) returns List<User>
+UserUseCaseImpl             ← use-case         (core module) returns List<User>
     │  calls UserRepository port (core)
     ▼
 UserRepositoryImpl          ← secondary adapter (data module) maps UserEntity to User
@@ -418,7 +435,7 @@ UserJpaRepository           ← Spring Data JPA   (data module, internal)
  PostgreSQL / H2 Database
     │
     ▼  (result propagates back up)
-HTTP 200 OK  [ UserDto, … ]
+HTTP 200 OK  [ User, … ]
 ```
 
 ![Hexagonal Architecture Data Flow 1](./assets/hexagonal-architecture-data-flow-1.png)
