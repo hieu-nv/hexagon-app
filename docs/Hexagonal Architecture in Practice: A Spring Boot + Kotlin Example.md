@@ -104,8 +104,6 @@ Next, we define the repository interface — the **port** through which the doma
 // core/src/main/kotlin/com/hieunv/app/core/user/UserRepository.kt
 package com.hieunv.app.core.user
 
-import org.springframework.stereotype.Component
-
 interface UserRepository {
     fun findAll(): List<UserEntity>
 }
@@ -142,7 +140,7 @@ class UserServiceImpl(
 
 The Data module is responsible for implementing repository interfaces defined in the core module. This module connects the domain to the database.
 
-**Step 1 — `UserJpaRepository`**: A Spring Data JPA interface. Note that even though the ID is stored as a `String` (generated via `UUID.randomUUID().toString()`), the JPA repository is still typed with `UUID` as the second generic parameter — this is a known inconsistency in the current implementation.
+**Step 1 — `UserJpaRepository`**: A Spring Data JPA interface. Note that the ID is stored as a `String` (generated via `UUID.randomUUID().toString()`), and the JPA repository is typed with `String` as the second generic parameter.
 
 ```kotlin
 // data/src/main/kotlin/com/hieunv/app/data/user/UserJpaRepository.kt
@@ -151,10 +149,9 @@ package com.hieunv.app.data.user
 import com.hieunv.app.core.user.UserEntity
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Repository
-import java.util.UUID
 
 @Repository
-interface UserJpaRepository : JpaRepository<UserEntity, UUID> {
+interface UserJpaRepository : JpaRepository<UserEntity, String> {
     override fun findAll(): List<UserEntity>
 }
 ```
@@ -207,6 +204,8 @@ class UserController(
   }
 }
 ```
+
+> **Note:** In a real-world scenario, returning a domain entity (`UserEntity`) containing JPA annotations and database fields (like `deletedAt` and `password`) directly from the API controller is a leaky abstraction. A better practice is to map the domain entity to a Data Transfer Object (DTO) before returning it, keeping persistence details hidden from the API consumers.
 
 The runtime call chain flows as follows:
 `UserController` (API) -> `UserService` (Core) -> `UserServiceImpl` (Core implements UserService) -> `UserRepository` (Core Port) -> `UserRepositoryImpl` (Data Adapter implements UserRepository) -> `UserJpaRepository` (JPA) -> Database.
@@ -325,13 +324,14 @@ The gateway implementation in the `gw` module bridges the core port and the HTTP
 package com.hieunv.gw.pokemon
 
 import com.hieunv.app.core.pokemon.Pokemon
+import com.hieunv.app.core.pokemon.PokemonGateway as CorePokemonGateway
 import com.hieunv.gw.client.Poke
 import com.hieunv.gw.client.PokeClient
 import org.springframework.core.ParameterizedTypeReference
 import org.springframework.stereotype.Service
 
 @Service
-class PokemonGateway(private val pokeClient: PokeClient) : com.hieunv.app.core.pokemon.PokemonGateway {
+class PokemonGateway(private val pokeClient: PokeClient) : CorePokemonGateway {
 
     override fun fetchPokemonList(
         limit: Int, offset: Int
@@ -385,9 +385,9 @@ class PokemonController(
 
 Before tracing the data flow, it helps to visualize how our modules depend on each other:
 
-![Module Dependency Overview](./assets/module-dependency-overview.png)
+The `core` module has **zero dependencies** on other application modules (`api`, `gw`, `data`) — it is the stable center. All other modules depend on core, never the other way around. 
 
-The `core` module has **zero dependencies** on other modules — it is the stable center. All other modules depend on core, never the other way around.
+> **Note:** In a strict DDD implementation, the core domain would also have zero dependencies on external frameworks. However, for pragmatic reasons, this sample project allows Spring context annotations (`@Component`) and JPA annotations (`@Entity`, `@MappedSuperclass`) in the core domain to reduce boilerplate and mappings. This is a common shortcut known as "Pragmatic Hexagonal Architecture."
 
 ## Data Flow in Hexagonal Architecture
 
