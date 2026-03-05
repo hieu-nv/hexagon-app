@@ -1,5 +1,5 @@
 package com.hieunv.app.core.user
 
 interface UserService {
-  fun findAll(): List<UserEntity>
+  fun findAll(): List<User>
 }

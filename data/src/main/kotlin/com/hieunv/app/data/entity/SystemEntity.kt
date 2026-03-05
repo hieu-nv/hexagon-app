@@ -1,11 +1,10 @@
-package com.hieunv.app.core.entity
+package com.hieunv.app.data.entity
 
 import jakarta.persistence.Column
 import jakarta.persistence.Id
 import jakarta.persistence.MappedSuperclass
 import java.time.LocalDateTime
 import java.util.UUID
-
 
 @MappedSuperclass
 open class SystemEntity(
@@ -15,5 +14,5 @@ open class SystemEntity(
 
     @Column(nullable = false, name = "updated_at") var updatedAt: LocalDateTime = LocalDateTime.now(),
 
-    @Column(nullable = false, name = "deleted_at") var deletedAt: LocalDateTime = LocalDateTime.now(),
+    @Column(nullable = true, name = "deleted_at") var deletedAt: LocalDateTime? = null,
 )

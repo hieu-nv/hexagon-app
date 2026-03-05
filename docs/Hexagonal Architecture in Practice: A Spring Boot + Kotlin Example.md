@@ -27,16 +27,17 @@ hexagon-app/
 ├── api/                                # API Module (Primary Adapters)
 │   └── src/main/kotlin/com/hieunv/app/
 │       ├── App.kt                      # Main application class
-│       ├── user/                       # User feature REST controllers
-│       └── pokemon/                    # Pokemon feature REST controllers
+│       ├── user/                       # User feature controllers & DTOs
+│       └── pokemon/                    # Pokemon feature controllers
 ├── core/                               # Core Module (Domain & Ports)
 │   └── src/main/kotlin/com/hieunv/app/core/
-│       ├── entity/                     # Shared domain logic/entities
 │       ├── user/                       # User domain model, ports, and use-cases
 │       └── pokemon/                    # Pokemon domain model and ports
 ├── data/                               # Data Module (Secondary Adapters - DB)
 │   └── src/main/kotlin/com/hieunv/app/data/
+│       ├── entity/                     # JPA base entities
 │       └── user/
+│           ├── UserEntity.kt           # JPA Entity for User
 │           ├── UserJpaRepository.kt    # Spring Data JPA interface
 │           └── UserRepositoryImpl.kt   # Implements core's UserRepository port
 ├── gw/                                 # Gateway Module (Secondary Adapters - External APIs)
@@ -51,51 +52,25 @@ Notice how each feature is represented across multiple modules, maintaining the 
 
 ### 1. Core Module - The Heart of the Architecture
 
-The Core module is the heart of the application, containing business logic and domain entities. In our implementation, we use JPA annotations in our core module for simplicity, though in stricter DDD implementations, these might be separated.
+The Core module is the heart of the application, containing business logic and **clean domain models**. Unlike the database-oriented models, these are pure Kotlin classes free from JPA or framework-specific annotations.
 
-Let's look at our base entity class and user entity:
-
-```kotlin
-// core/src/main/kotlin/com/hieunv/app/core/entity/SystemEntity.kt
-package com.hieunv.app.core.entity
-
-import jakarta.persistence.Column
-import jakarta.persistence.Id
-import jakarta.persistence.MappedSuperclass
-import java.time.LocalDateTime
-import java.util.UUID
-
-@MappedSuperclass
-open class SystemEntity(
-    @Id val id: String = UUID.randomUUID().toString(),
-
-    @Column(nullable = false, name = "created_at") val createdAt: LocalDateTime = LocalDateTime.now(),
-
-    @Column(nullable = false, name = "updated_at") var updatedAt: LocalDateTime = LocalDateTime.now(),
-
-    @Column(nullable = false, name = "deleted_at") var deletedAt: LocalDateTime = LocalDateTime.now(),
-)
-```
+Let's look at our user domain model:
 
 ```kotlin
-// core/src/main/kotlin/com/hieunv/app/core/user/UserEntity.kt
+// core/src/main/kotlin/com/hieunv/app/core/user/User.kt
 package com.hieunv.app.core.user
 
-import com.hieunv.app.core.entity.SystemEntity
-import jakarta.persistence.Column
-import jakarta.persistence.Entity
-import jakarta.persistence.Table
+import java.time.LocalDateTime
 
-@Entity
-@Table(name = "users")
-class UserEntity(
-    @Column(nullable = false, unique = true) val username: String = "",
-
-    @Column(nullable = false) var password: String = "",
-
-    @Column(nullable = false) var enabled: Boolean = true,
-
-    ) : SystemEntity()
+data class User(
+    val id: String,
+    val username: String,
+    var password: String,
+    var enabled: Boolean,
+    val createdAt: LocalDateTime,
+    var updatedAt: LocalDateTime,
+    var deletedAt: LocalDateTime
+)
 ```
 
 Next, we define the repository interface — the **port** through which the domain expresses its data needs:
@@ -105,7 +80,7 @@ Next, we define the repository interface — the **port** through which the doma
 package com.hieunv.app.core.user
 
 interface UserRepository {
-    fun findAll(): List<UserEntity>
+    fun findAll(): List<User>
 }
 ```
 
@@ -116,7 +91,7 @@ In this implementation, we go a step further by introducing a **Service (Use-Cas
 package com.hieunv.app.core.user
 
 interface UserService {
-  fun findAll(): List<UserEntity>
+  fun findAll(): List<User>
 }
 ```
 
@@ -130,7 +105,7 @@ import org.springframework.stereotype.Component
 class UserServiceImpl(
   private val userRepository: UserRepository
 ) : UserService {
-  override fun findAll(): List<UserEntity> {
+  override fun findAll(): List<User> {
     return userRepository.findAll()
   }
 }
@@ -138,44 +113,48 @@ class UserServiceImpl(
 
 ### 2. Data Module - Secondary Adapter
 
-The Data module is responsible for implementing repository interfaces defined in the core module. This module connects the domain to the database.
+The Data module is responsible for implementing repository interfaces defined in the core module. This module contains the **persistence entities** (JPA) and bridges them to the domain models.
 
-**Step 1 — `UserJpaRepository`**: A Spring Data JPA interface. Note that the ID is stored as a `String` (generated via `UUID.randomUUID().toString()`), and the JPA repository is typed with `String` as the second generic parameter.
+**Step 1 — JPA Entities**: We move the database-specific annotations here.
+
+```kotlin
+// data/src/main/kotlin/com/hieunv/app/data/user/UserEntity.kt
+@Entity
+@Table(name = "users")
+class UserEntity(
+    @Column(nullable = false, unique = true) val username: String = "",
+    @Column(nullable = false) var password: String = "",
+    @Column(nullable = false) var enabled: Boolean = true
+) : SystemEntity()
+```
+
+**Step 2 — `UserJpaRepository`**: A standard Spring Data JPA interface.
 
 ```kotlin
 // data/src/main/kotlin/com/hieunv/app/data/user/UserJpaRepository.kt
-package com.hieunv.app.data.user
-
-import com.hieunv.app.core.user.UserEntity
-import org.springframework.data.jpa.repository.JpaRepository
-import org.springframework.stereotype.Repository
-
 @Repository
 interface UserJpaRepository : JpaRepository<UserEntity, String> {
     override fun findAll(): List<UserEntity>
 }
 ```
 
-**Step 2 — `UserRepositoryImpl`**: The actual **secondary adapter** — the glue between the domain port and Spring Data JPA.
+**Step 3 — `UserRepositoryImpl`**: The secondary adapter that handles the mapping from `UserEntity` to the domain `User`.
 
 ```kotlin
 // data/src/main/kotlin/com/hieunv/app/data/user/UserRepositoryImpl.kt
-package com.hieunv.app.data.user
-
-import com.hieunv.app.core.user.UserEntity
-import com.hieunv.app.core.user.UserRepository
-import org.springframework.stereotype.Component
-
 @Component
 class UserRepositoryImpl(
     private val userJpaRepository: UserJpaRepository
 ) : UserRepository {
-
-    override fun findAll(): List<UserEntity> {
-        return userJpaRepository.findAll()
+    override fun findAll(): List<User> {
+        return userJpaRepository.findAll().map { it.toDomain() }
     }
-
 }
+
+private fun UserEntity.toDomain() = User(
+    id = id, username = username, password = password, enabled = enabled,
+    createdAt = createdAt, updatedAt = updatedAt, deletedAt = deletedAt
+)
 ```
 
 ### 3. API Module - Primary Adapter
@@ -184,28 +163,17 @@ The API module contains controllers that handle HTTP requests. It interacts with
 
 ```kotlin
 // api/src/main/kotlin/com/hieunv/app/user/UserController.kt
-package com.hieunv.app.user
-
-import com.hieunv.app.core.user.UserEntity
-import com.hieunv.app.core.user.UserService
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RestController
-
 @RestController
 @RequestMapping("/api/v1/users")
-class UserController(
-  private val userService: UserService
-) {
+class UserController(private val userService: UserService) {
   @GetMapping
-  fun getAllUsers(): List<UserEntity> {
-    val users = userService.findAll()
-    return users
+  fun getAllUsers(): List<UserDto> {
+    return userService.findAll().map { it.toDto() }
   }
 }
 ```
 
-> **Note:** In a real-world scenario, returning a domain entity (`UserEntity`) containing JPA annotations and database fields (like `deletedAt` and `password`) directly from the API controller is a leaky abstraction. A better practice is to map the domain entity to a Data Transfer Object (DTO) before returning it, keeping persistence details hidden from the API consumers.
+> **Note:** We map the domain `User` to a `UserDto` to shield API consumers from internal domain details (like passwords). This maintains a clean boundary at the primary adapter level.
 
 The runtime call chain flows as follows:
 `UserController` (API) -> `UserService` (Core) -> `UserServiceImpl` (Core implements UserService) -> `UserRepository` (Core Port) -> `UserRepositoryImpl` (Data Adapter implements UserRepository) -> `UserJpaRepository` (JPA) -> Database.
@@ -385,9 +353,9 @@ class PokemonController(
 
 Before tracing the data flow, it helps to visualize how our modules depend on each other:
 
-The `core` module has **zero dependencies** on other application modules (`api`, `gw`, `data`) — it is the stable center. All other modules depend on core, never the other way around. 
+The `core` module has **zero dependencies** on other application modules (`api`, `gw`, `data`) — it is the stable center. This strict separation ensures that domain logic remains unaffected by infrastructure changes.
 
-> **Note:** In a strict DDD implementation, the core domain would also have zero dependencies on external frameworks. However, for pragmatic reasons, this sample project allows Spring context annotations (`@Component`) and JPA annotations (`@Entity`, `@MappedSuperclass`) in the core domain to reduce boilerplate and mappings. This is a common shortcut known as "Pragmatic Hexagonal Architecture."
+> **Note:** In this implementation, we follow a strict separation where the `core` domain contains no JPA or database-specific code. This ensures maximum portability and testability, though it requires mapping between domain models and persistence entities in the `data` module.
 
 ## Data Flow in Hexagonal Architecture
 
@@ -399,13 +367,13 @@ Our two features demonstrate both flavours of secondary adapter: a **database ad
 HTTP GET /api/v1/users
     │
     ▼
-UserController              ← primary adapter  (api module)
+UserController              ← primary adapter  (api module) maps User to UserDto
     │  calls UserService port (core)
     ▼
-UserServiceImpl             ← use-case         (core module)
+UserServiceImpl             ← use-case         (core module) returns List<User>
     │  calls UserRepository port (core)
     ▼
-UserRepositoryImpl          ← secondary adapter (data module)
+UserRepositoryImpl          ← secondary adapter (data module) maps UserEntity to User
     │  delegates to
     ▼
 UserJpaRepository           ← Spring Data JPA   (data module, internal)
@@ -414,7 +382,7 @@ UserJpaRepository           ← Spring Data JPA   (data module, internal)
  PostgreSQL / H2 Database
     │
     ▼  (result propagates back up)
-HTTP 200 OK  [ UserEntity, … ]
+HTTP 200 OK  [ UserDto, … ]
 ```
 
 ![Hexagonal Architecture Data Flow 1](./assets/hexagonal-architecture-data-flow-1.png)

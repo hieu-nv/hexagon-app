@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component
 class UserServiceImpl(
   private val userRepository: UserRepository
 ) : UserService {
-  override fun findAll(): List<UserEntity> {
+  override fun findAll(): List<User> {
     return userRepository.findAll()
   }
 }
