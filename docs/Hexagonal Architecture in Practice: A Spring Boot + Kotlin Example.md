@@ -207,7 +207,9 @@ class UserController(
 ```
 
 The runtime call chain flows as follows:
-`UserController` (API) -> `UserService` (Core) -> `UserRepository` (Core Port) -> `UserRepositoryImpl` (Data Adapter) -> `UserJpaRepository` (JPA) -> Database.
+`UserController` (API) -> `UserService` (Core) -> `UserServiceImpl` (Core implements UserService) -> `UserRepository` (Core Port) -> `UserRepositoryImpl` (Data Adapter implements UserRepository) -> `UserJpaRepository` (JPA) -> Database.
+
+![Hexagonal Architecture Call Chain](./assets/runtime-call-chain-flows.png)
 
 ### 4. Gateway Module - Secondary Adapter for External Services
 
