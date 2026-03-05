@@ -104,6 +104,8 @@ Next, we define the repository interface — the **port** through which the doma
 // core/src/main/kotlin/com/hieunv/app/core/user/UserRepository.kt
 package com.hieunv.app.core.user
 
+import org.springframework.stereotype.Component
+
 interface UserRepository {
     fun findAll(): List<UserEntity>
 }
@@ -140,7 +142,7 @@ class UserServiceImpl(
 
 The Data module is responsible for implementing repository interfaces defined in the core module. This module connects the domain to the database.
 
-**Step 1 — `UserJpaRepository`**: A Spring Data JPA interface. Note the use of `UUID` as the ID type, matching our persistence strategy.
+**Step 1 — `UserJpaRepository`**: A Spring Data JPA interface. Note that even though the ID is stored as a `String` (generated via `UUID.randomUUID().toString()`), the JPA repository is still typed with `UUID` as the second generic parameter — this is a known inconsistency in the current implementation.
 
 ```kotlin
 // data/src/main/kotlin/com/hieunv/app/data/user/UserJpaRepository.kt
@@ -221,6 +223,16 @@ First, the domain model and port interface live in the core:
 // core/src/main/kotlin/com/hieunv/app/core/pokemon/Pokemon.kt
 package com.hieunv.app.core.pokemon
 
+/**
+ * Data class representing a Pokémon.
+ *
+ * @code {
+ *   {
+ *     "name": "bulbasaur",
+ *     "url": "https://pokeapi.co/api/v2/pokemon/1/"
+ *   }
+ * }
+ */
 data class Pokemon(
     val name: String = "", val url: String = ""
 )
@@ -231,6 +243,13 @@ data class Pokemon(
 package com.hieunv.app.core.pokemon
 
 interface PokemonGateway {
+    /**
+     * Fetches a list of Pokémon.
+     *
+     * @param limit the maximum number of Pokémon to return
+     * @param offset the offset for pagination
+     * @return a list of Pokémon
+     */
     fun fetchPokemonList(limit: Int, offset: Int): List<Pokemon?>?
 }
 ```
@@ -241,6 +260,26 @@ For handling the paginated API response, we have a generic wrapper class in the 
 // gw/src/main/kotlin/com/hieunv/gw/client/Poke.kt
 package com.hieunv.gw.client
 
+/**
+ * Data class representing a Poke API response.
+ *
+ * @code {
+ * {
+ *   "count": 1302,
+ *   "next": "https://pokeapi.co/api/v2/pokemon?offset=20&limit=20",
+ *   "previous": null,
+ *   "results": [
+ *     {
+ *       "name": "bulbasaur",
+ *       "url": "https://pokeapi.co/api/v2/pokemon/1/"
+ *     },
+ *     {
+ *       "name": "ivysaur",
+ *       "url": "https://pokeapi.co/api/v2/pokemon/2/"
+ *     }
+ *   ]
+ * }
+ */
 data class Poke<T>(
     val count: Int = 0,
     val next: String? = null,
@@ -263,7 +302,7 @@ import org.springframework.web.client.RestTemplate
 
 @Component
 class PokeClient(private val restTemplateBuilder: RestTemplateBuilder) {
-    private val restTemplate: RestTemplate = restTemplateBuilder.build()
+    private val restTemplate: RestTemplate = restTemplateBuilder.build();
 
     operator fun <T> get(url: String, responseType: ParameterizedTypeReference<T>): T? {
         return try {
@@ -325,6 +364,13 @@ import org.springframework.web.bind.annotation.RestController
 class PokemonController(
     private val pokemonGateway: PokemonGateway
 ) {
+    /**
+     * Get a list of Pokemon with pagination support
+     *
+     * @param limit maximum number of Pokemon to return (default: 20)
+     * @param offset the offset for pagination (default: 0)
+     * @return a list of Pokemon
+     */
     @GetMapping
     fun getPokemonList(
         @RequestParam(defaultValue = "20") limit: Int,
@@ -371,6 +417,8 @@ UserJpaRepository           ← Spring Data JPA   (data module, internal)
 HTTP 200 OK  [ UserEntity, … ]
 ```
 
+![Hexagonal Architecture Data Flow 1](./assets/hexagonal-architecture-data-flow-1.png)
+
 ### Flow 2 — `GET /api/v1/pokemon` (External API)
 
 ```
@@ -391,6 +439,8 @@ PokeClient                  ← HTTP client        (gw module, internal)
     ▼  (result propagates back up)
 HTTP 200 OK  [ Pokemon, … ]
 ```
+
+![Hexagonal Architecture Data Flow 2](./assets/hexagonal-architecture-data-flow-2.png)
 
 In both cases the **primary adapter** (controller) only ever references the **core port** — it has no knowledge of whether data comes from a database, a remote API, or an in-memory stub. That is the key insight of hexagonal architecture.
 
