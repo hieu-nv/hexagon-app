@@ -43,3 +43,5 @@ app.db*
 
 local.properties
 gradle/gradle-daemon-jvm.properties
+.agent/
+.github/
