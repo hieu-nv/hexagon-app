@@ -1,5 +1,5 @@
 package com.hieunv.app.core.user
 
-interface UserService {
+interface UserUseCase {
   fun findAll(): List<User>
 }

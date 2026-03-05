@@ -1,11 +1,8 @@
 package com.hieunv.app.core.user
 
-import org.springframework.stereotype.Component
-
-@Component
-class UserServiceImpl(
+class UserUseCaseImpl(
   private val userRepository: UserRepository
-) : UserService {
+) : UserUseCase {
   override fun findAll(): List<User> {
     return userRepository.findAll()
   }

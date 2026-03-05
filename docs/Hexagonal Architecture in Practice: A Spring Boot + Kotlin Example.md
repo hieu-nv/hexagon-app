@@ -69,7 +69,7 @@ data class User(
     var enabled: Boolean,
     val createdAt: LocalDateTime,
     var updatedAt: LocalDateTime,
-    var deletedAt: LocalDateTime
+    var deletedAt: LocalDateTime?
 )
 ```
 
@@ -84,7 +84,7 @@ interface UserRepository {
 }
 ```
 
-In this implementation, we go a step further by introducing a **Service (Use-Case) layer** within the core module. This layer orchestrates the domain logic:
+In this implementation, we go a step further by introducing a **Service (Use-Case) layer** within the core module. In strict Hexagonal Architecture terminology, this `UserService` interface represents a **Primary Port** (or Driving Port), and its implementation (`UserServiceImpl`) represents a **Use-Case**. This layer orchestrates the domain logic:
 
 ```kotlin
 // core/src/main/kotlin/com/hieunv/app/core/user/UserService.kt
@@ -111,6 +111,8 @@ class UserServiceImpl(
 }
 ```
 
+> **Note on Strictness vs Pragmatism:** In the absolute strictest interpretation of Hexagonal Architecture, the `core` module should have zero framework dependencies (not even Spring's `@Component`). Instead, beans would be wired in a separate configuration class outside the core. However, using `@Component` in the core is a very common and pragmatic compromise in Spring Boot applications to reduce configuration boilerplate.
+
 ### 2. Data Module - Secondary Adapter
 
 The Data module is responsible for implementing repository interfaces defined in the core module. This module contains the **persistence entities** (JPA) and bridges them to the domain models.
@@ -119,19 +121,34 @@ The Data module is responsible for implementing repository interfaces defined in
 
 ```kotlin
 // data/src/main/kotlin/com/hieunv/app/data/user/UserEntity.kt
+package com.hieunv.app.data.user
+
+import com.hieunv.app.data.entity.SystemEntity
+import jakarta.persistence.Column
+import jakarta.persistence.Entity
+import jakarta.persistence.Table
+
 @Entity
 @Table(name = "users")
 class UserEntity(
     @Column(nullable = false, unique = true) val username: String = "",
+
     @Column(nullable = false) var password: String = "",
-    @Column(nullable = false) var enabled: Boolean = true
-) : SystemEntity()
+
+    @Column(nullable = false) var enabled: Boolean = true,
+
+    ) : SystemEntity()
 ```
 
 **Step 2 — `UserJpaRepository`**: A standard Spring Data JPA interface.
 
 ```kotlin
 // data/src/main/kotlin/com/hieunv/app/data/user/UserJpaRepository.kt
+package com.hieunv.app.data.user
+
+import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.stereotype.Repository
+
 @Repository
 interface UserJpaRepository : JpaRepository<UserEntity, String> {
     override fun findAll(): List<UserEntity>
@@ -142,18 +159,30 @@ interface UserJpaRepository : JpaRepository<UserEntity, String> {
 
 ```kotlin
 // data/src/main/kotlin/com/hieunv/app/data/user/UserRepositoryImpl.kt
+package com.hieunv.app.data.user
+
+import com.hieunv.app.core.user.User
+import com.hieunv.app.core.user.UserRepository
+import org.springframework.stereotype.Component
+
 @Component
 class UserRepositoryImpl(
     private val userJpaRepository: UserJpaRepository
 ) : UserRepository {
+
     override fun findAll(): List<User> {
         return userJpaRepository.findAll().map { it.toDomain() }
     }
 }
 
 private fun UserEntity.toDomain() = User(
-    id = id, username = username, password = password, enabled = enabled,
-    createdAt = createdAt, updatedAt = updatedAt, deletedAt = deletedAt
+    id = id,
+    username = username,
+    password = password,
+    enabled = enabled,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+    deletedAt = deletedAt
 )
 ```
 
@@ -163,17 +192,25 @@ The API module contains controllers that handle HTTP requests. It interacts with
 
 ```kotlin
 // api/src/main/kotlin/com/hieunv/app/user/UserController.kt
+package com.hieunv.app.user
+
+import com.hieunv.app.core.user.User
+import com.hieunv.app.core.user.UserService
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
+
 @RestController
 @RequestMapping("/api/v1/users")
-class UserController(private val userService: UserService) {
+class UserController(
+  private val userService: UserService
+) {
   @GetMapping
-  fun getAllUsers(): List<UserDto> {
-    return userService.findAll().map { it.toDto() }
+  fun getAllUsers(): List<User> {
+    return userService.findAll()
   }
 }
 ```
-
-> **Note:** We map the domain `User` to a `UserDto` to shield API consumers from internal domain details (like passwords). This maintains a clean boundary at the primary adapter level.
 
 The runtime call chain flows as follows:
 `UserController` (API) -> `UserService` (Core) -> `UserServiceImpl` (Core implements UserService) -> `UserRepository` (Core Port) -> `UserRepositoryImpl` (Data Adapter implements UserRepository) -> `UserJpaRepository` (JPA) -> Database.
@@ -288,28 +325,27 @@ class PokeClient(private val restTemplateBuilder: RestTemplateBuilder) {
 The gateway implementation in the `gw` module bridges the core port and the HTTP client:
 
 ```kotlin
-// gw/src/main/kotlin/com/hieunv/gw/pokemon/PokemonGateway.kt
+// gw/src/main/kotlin/com/hieunv/gw/pokemon/PokemonGatewayImpl.kt
 package com.hieunv.gw.pokemon
 
 import com.hieunv.app.core.pokemon.Pokemon
-import com.hieunv.app.core.pokemon.PokemonGateway as CorePokemonGateway
+import com.hieunv.app.core.pokemon.PokemonGateway
 import com.hieunv.gw.client.Poke
 import com.hieunv.gw.client.PokeClient
 import org.springframework.core.ParameterizedTypeReference
 import org.springframework.stereotype.Service
 
 @Service
-class PokemonGateway(private val pokeClient: PokeClient) : CorePokemonGateway {
+class PokemonGatewayImpl(private val pokeClient: PokeClient) : PokemonGateway {
 
-    override fun fetchPokemonList(
-        limit: Int, offset: Int
-    ): List<Pokemon?>? {
-        return pokeClient.get(
-            "https://pokeapi.co/api/v2/pokemon?limit=$limit&offset=$offset",
-            object : ParameterizedTypeReference<Poke<Pokemon>>() {})?.let { response ->
-            return response.results.map { it }
-        }
+  override fun fetchPokemonList(
+    limit: Int, offset: Int
+  ): List<Pokemon?>? {
+    return pokeClient["https://pokeapi.co/api/v2/pokemon?limit=$limit&offset=$offset", object :
+      ParameterizedTypeReference<Poke<Pokemon>>() {}]?.let { response ->
+      return response.results.map { it }
     }
+  }
 }
 ```
 
@@ -419,6 +455,8 @@ In both cases the **primary adapter** (controller) only ever references the **co
 3. **Excellent Testability**: The domain can be tested independently, without setting up a database or UI.
 4. **Parallel Development**: Teams can work in parallel on different parts of the application.
 5. **Flexibility**: Easy to add new adapters for new technologies or communication channels.
+
+> **Trade-off:** It is worth noting that Hexagonal Architecture often introduces **mapping boilerplate**. Since you separate the domain from persistence and API layers, you must write mappers (e.g., `toDomain()`, `toDto()`, `toEntity()`) to convert data structures at the boundaries.
 
 ## When to Use Hexagonal Architecture
 
