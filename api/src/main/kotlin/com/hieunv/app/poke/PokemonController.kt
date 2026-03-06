@@ -1,9 +1,8 @@
-package com.hieunv.app.pokemon
+package com.hieunv.app.poke
 
-import com.hieunv.app.core.pokemon.Pokemon
-import com.hieunv.app.core.pokemon.PokemonGateway
+import com.hieunv.app.core.poke.Pokemon
+import com.hieunv.app.core.poke.PokemonGateway
 import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController

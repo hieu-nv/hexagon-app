@@ -1,7 +1,7 @@
-package com.hieunv.app.user
+package com.hieunv.app.auth
 
-import com.hieunv.app.core.user.User
-import com.hieunv.app.core.user.UserUseCase
+import com.hieunv.app.core.auth.User
+import com.hieunv.app.core.auth.UserUseCase
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController

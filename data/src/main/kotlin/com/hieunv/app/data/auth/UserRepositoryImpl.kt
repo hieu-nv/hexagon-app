@@ -1,7 +1,7 @@
-package com.hieunv.app.data.user
+package com.hieunv.app.data.auth
 
-import com.hieunv.app.core.user.User
-import com.hieunv.app.core.user.UserRepository
+import com.hieunv.app.core.auth.User
+import com.hieunv.app.core.auth.UserRepository
 import org.springframework.stereotype.Component
 
 @Component

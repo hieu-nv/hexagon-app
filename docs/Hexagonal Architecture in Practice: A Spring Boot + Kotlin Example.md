@@ -58,7 +58,7 @@ Let's look at our user domain model:
 
 ```kotlin
 // core/src/main/kotlin/com/hieunv/app/core/user/User.kt
-package com.hieunv.app.core.user
+package com.hieunv.app.core.auth
 
 import java.time.LocalDateTime
 
@@ -77,7 +77,7 @@ Next, we define the repository interface — the **port** through which the doma
 
 ```kotlin
 // core/src/main/kotlin/com/hieunv/app/core/user/UserRepository.kt
-package com.hieunv.app.core.user
+package com.hieunv.app.core.auth
 
 interface UserRepository {
     fun findAll(): List<User>
@@ -88,7 +88,7 @@ In this implementation, we go a step further by introducing a **Use-Case layer**
 
 ```kotlin
 // core/src/main/kotlin/com/hieunv/app/core/user/UserUseCase.kt
-package com.hieunv.app.core.user
+package com.hieunv.app.core.auth
 
 interface UserUseCase {
   fun findAll(): List<User>
@@ -97,7 +97,7 @@ interface UserUseCase {
 
 ```kotlin
 // core/src/main/kotlin/com/hieunv/app/core/user/UserUseCaseImpl.kt
-package com.hieunv.app.core.user
+package com.hieunv.app.core.auth
 
 class UserUseCaseImpl(
   private val userRepository: UserRepository
@@ -114,9 +114,9 @@ class UserUseCaseImpl(
 // api/src/main/kotlin/com/hieunv/app/config/DomainConfig.kt
 package com.hieunv.app.config
 
-import com.hieunv.app.core.user.UserRepository
-import com.hieunv.app.core.user.UserUseCase
-import com.hieunv.app.core.user.UserUseCaseImpl
+import com.hieunv.app.core.auth.UserRepository
+import com.hieunv.app.core.auth.UserUseCase
+import com.hieunv.app.core.auth.UserUseCaseImpl
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
@@ -138,7 +138,7 @@ The Data module is responsible for implementing repository interfaces defined in
 
 ```kotlin
 // data/src/main/kotlin/com/hieunv/app/data/user/UserEntity.kt
-package com.hieunv.app.data.user
+package com.hieunv.app.data.auth
 
 import com.hieunv.app.data.entity.SystemEntity
 import jakarta.persistence.Column
@@ -161,7 +161,7 @@ class UserEntity(
 
 ```kotlin
 // data/src/main/kotlin/com/hieunv/app/data/user/UserJpaRepository.kt
-package com.hieunv.app.data.user
+package com.hieunv.app.data.auth
 
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Repository
@@ -176,10 +176,10 @@ interface UserJpaRepository : JpaRepository<UserEntity, String> {
 
 ```kotlin
 // data/src/main/kotlin/com/hieunv/app/data/user/UserRepositoryImpl.kt
-package com.hieunv.app.data.user
+package com.hieunv.app.data.auth
 
-import com.hieunv.app.core.user.User
-import com.hieunv.app.core.user.UserRepository
+import com.hieunv.app.core.auth.User
+import com.hieunv.app.core.auth.UserRepository
 import org.springframework.stereotype.Component
 
 @Component
@@ -209,10 +209,10 @@ The API module contains controllers that handle HTTP requests. It interacts with
 
 ```kotlin
 // api/src/main/kotlin/com/hieunv/app/user/UserController.kt
-package com.hieunv.app.user
+package com.hieunv.app.auth
 
-import com.hieunv.app.core.user.User
-import com.hieunv.app.core.user.UserUseCase
+import com.hieunv.app.core.auth.User
+import com.hieunv.app.core.auth.UserUseCase
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -242,7 +242,7 @@ First, the domain model and port interface live in the core:
 
 ```kotlin
 // core/src/main/kotlin/com/hieunv/app/core/pokemon/Pokemon.kt
-package com.hieunv.app.core.pokemon
+package com.hieunv.app.core.poke
 
 /**
  * Data class representing a Pokémon.
@@ -261,7 +261,7 @@ data class Pokemon(
 
 ```kotlin
 // core/src/main/kotlin/com/hieunv/app/core/pokemon/PokemonGateway.kt
-package com.hieunv.app.core.pokemon
+package com.hieunv.app.core.poke
 
 interface PokemonGateway {
     /**
@@ -345,8 +345,8 @@ The gateway implementation in the `gw` module bridges the core port and the HTTP
 // gw/src/main/kotlin/com/hieunv/gw/pokemon/PokemonGatewayImpl.kt
 package com.hieunv.gw.pokemon
 
-import com.hieunv.app.core.pokemon.Pokemon
-import com.hieunv.app.core.pokemon.PokemonGateway
+import com.hieunv.app.core.poke.Pokemon
+import com.hieunv.app.core.poke.PokemonGateway
 import com.hieunv.gw.client.Poke
 import com.hieunv.gw.client.PokeClient
 import org.springframework.core.ParameterizedTypeReference
@@ -370,10 +370,10 @@ Finally, the primary adapter exposes the feature via REST:
 
 ```kotlin
 // api/src/main/kotlin/com/hieunv/app/pokemon/PokemonController.kt
-package com.hieunv.app.pokemon
+package com.hieunv.app.poke
 
-import com.hieunv.app.core.pokemon.Pokemon
-import com.hieunv.app.core.pokemon.PokemonGateway
+import com.hieunv.app.core.poke.Pokemon
+import com.hieunv.app.core.poke.PokemonGateway
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping

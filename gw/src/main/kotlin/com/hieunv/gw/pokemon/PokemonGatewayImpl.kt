@@ -1,7 +1,7 @@
 package com.hieunv.gw.pokemon
 
-import com.hieunv.app.core.pokemon.Pokemon
-import com.hieunv.app.core.pokemon.PokemonGateway
+import com.hieunv.app.core.poke.Pokemon
+import com.hieunv.app.core.poke.PokemonGateway
 import com.hieunv.gw.client.Poke
 import com.hieunv.gw.client.PokeClient
 import org.springframework.core.ParameterizedTypeReference

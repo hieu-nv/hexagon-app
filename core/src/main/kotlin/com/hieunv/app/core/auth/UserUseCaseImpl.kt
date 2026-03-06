@@ -1,4 +1,4 @@
-package com.hieunv.app.core.user
+package com.hieunv.app.core.auth
 
 class UserUseCaseImpl(
   private val userRepository: UserRepository

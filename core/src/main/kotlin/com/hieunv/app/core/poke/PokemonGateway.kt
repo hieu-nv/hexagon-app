@@ -1,4 +1,4 @@
-package com.hieunv.app.core.pokemon
+package com.hieunv.app.core.poke
 
 interface PokemonGateway {
     /**

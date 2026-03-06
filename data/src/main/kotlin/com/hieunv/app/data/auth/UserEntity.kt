@@ -1,4 +1,4 @@
-package com.hieunv.app.data.user
+package com.hieunv.app.data.auth
 
 import com.hieunv.app.data.entity.SystemEntity
 import jakarta.persistence.Column
