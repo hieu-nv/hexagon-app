@@ -27,16 +27,16 @@ hexagon-app/
 ├── api/                                # API Module (Primary Adapters)
 │   └── src/main/kotlin/com/hieunv/app/
 │       ├── App.kt                      # Main application class
-│       ├── user/                       # User feature controllers & DTOs
-│       └── pokemon/                    # Pokemon feature controllers
+│       ├── auth/                       # Auth feature controllers & DTOs
+│       └── poke/                       # Poke feature controllers
 ├── core/                               # Core Module (Domain & Ports)
 │   └── src/main/kotlin/com/hieunv/app/core/
-│       ├── user/                       # User domain model, ports, and use-cases
-│       └── pokemon/                    # Pokemon domain model and ports
+│       ├── auth/                       # Auth domain model, ports, and use-cases
+│       └── poke/                       # Poke domain model and ports
 ├── data/                               # Data Module (Secondary Adapters - DB)
 │   └── src/main/kotlin/com/hieunv/app/data/
 │       ├── entity/                     # JPA base entities
-│       └── user/
+│       └── auth/
 │           ├── UserEntity.kt           # JPA Entity for User
 │           ├── UserJpaRepository.kt    # Spring Data JPA interface
 │           └── UserRepositoryImpl.kt   # Implements core's UserRepository port
@@ -57,7 +57,7 @@ The Core module is the heart of the application, containing business logic and *
 Let's look at our user domain model:
 
 ```kotlin
-// core/src/main/kotlin/com/hieunv/app/core/user/User.kt
+// core/src/main/kotlin/com/hieunv/app/core/auth/User.kt
 package com.hieunv.app.core.auth
 
 import java.time.LocalDateTime
@@ -76,7 +76,7 @@ data class User(
 Next, we define the repository interface — the **port** through which the domain expresses its data needs:
 
 ```kotlin
-// core/src/main/kotlin/com/hieunv/app/core/user/UserRepository.kt
+// core/src/main/kotlin/com/hieunv/app/core/auth/UserRepository.kt
 package com.hieunv.app.core.auth
 
 interface UserRepository {
@@ -87,7 +87,7 @@ interface UserRepository {
 In this implementation, we go a step further by introducing a **Use-Case layer** within the core module. In strict Hexagonal Architecture terminology, this `UserUseCase` interface represents a **Primary Port** (or Driving Port), and its implementation (`UserUseCaseImpl`) represents a **Use-Case**. This layer orchestrates the domain logic:
 
 ```kotlin
-// core/src/main/kotlin/com/hieunv/app/core/user/UserUseCase.kt
+// core/src/main/kotlin/com/hieunv/app/core/auth/UserUseCase.kt
 package com.hieunv.app.core.auth
 
 interface UserUseCase {
@@ -96,7 +96,7 @@ interface UserUseCase {
 ```
 
 ```kotlin
-// core/src/main/kotlin/com/hieunv/app/core/user/UserUseCaseImpl.kt
+// core/src/main/kotlin/com/hieunv/app/core/auth/UserUseCaseImpl.kt
 package com.hieunv.app.core.auth
 
 class UserUseCaseImpl(
@@ -137,7 +137,7 @@ The Data module is responsible for implementing repository interfaces defined in
 **Step 1 — JPA Entities**: We move the database-specific annotations here.
 
 ```kotlin
-// data/src/main/kotlin/com/hieunv/app/data/user/UserEntity.kt
+// data/src/main/kotlin/com/hieunv/app/data/auth/UserEntity.kt
 package com.hieunv.app.data.auth
 
 import com.hieunv.app.data.entity.SystemEntity
@@ -160,7 +160,7 @@ class UserEntity(
 **Step 2 — `UserJpaRepository`**: A standard Spring Data JPA interface.
 
 ```kotlin
-// data/src/main/kotlin/com/hieunv/app/data/user/UserJpaRepository.kt
+// data/src/main/kotlin/com/hieunv/app/data/auth/UserJpaRepository.kt
 package com.hieunv.app.data.auth
 
 import org.springframework.data.jpa.repository.JpaRepository
@@ -175,7 +175,7 @@ interface UserJpaRepository : JpaRepository<UserEntity, String> {
 **Step 3 — `UserRepositoryImpl`**: The secondary adapter that handles the mapping from `UserEntity` to the domain `User`.
 
 ```kotlin
-// data/src/main/kotlin/com/hieunv/app/data/user/UserRepositoryImpl.kt
+// data/src/main/kotlin/com/hieunv/app/data/auth/UserRepositoryImpl.kt
 package com.hieunv.app.data.auth
 
 import com.hieunv.app.core.auth.User
@@ -208,7 +208,7 @@ private fun UserEntity.toDomain() = User(
 The API module contains controllers that handle HTTP requests. It interacts with the core through the `UserUseCase` port.
 
 ```kotlin
-// api/src/main/kotlin/com/hieunv/app/user/UserController.kt
+// api/src/main/kotlin/com/hieunv/app/auth/UserController.kt
 package com.hieunv.app.auth
 
 import com.hieunv.app.core.auth.User
@@ -241,7 +241,7 @@ The Gateway module implements interfaces defined in the core for interacting wit
 First, the domain model and port interface live in the core:
 
 ```kotlin
-// core/src/main/kotlin/com/hieunv/app/core/pokemon/Pokemon.kt
+// core/src/main/kotlin/com/hieunv/app/core/poke/Pokemon.kt
 package com.hieunv.app.core.poke
 
 /**
@@ -260,7 +260,7 @@ data class Pokemon(
 ```
 
 ```kotlin
-// core/src/main/kotlin/com/hieunv/app/core/pokemon/PokemonGateway.kt
+// core/src/main/kotlin/com/hieunv/app/core/poke/PokemonGateway.kt
 package com.hieunv.app.core.poke
 
 interface PokemonGateway {
@@ -369,7 +369,7 @@ class PokemonGatewayImpl(private val pokeClient: PokeClient) : PokemonGateway {
 Finally, the primary adapter exposes the feature via REST:
 
 ```kotlin
-// api/src/main/kotlin/com/hieunv/app/pokemon/PokemonController.kt
+// api/src/main/kotlin/com/hieunv/app/poke/PokemonController.kt
 package com.hieunv.app.poke
 
 import com.hieunv.app.core.poke.Pokemon
