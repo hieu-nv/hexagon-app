@@ -6,6 +6,8 @@ If you've ever found your business logic tangled up with Spring annotations or J
 
 This article walks through a practical Spring Boot + Kotlin implementation, examining the code organization, design decisions, and the benefits of adopting this architecture.
 
+Not a Medium member? Keep reading for free by clicking [here](https://medium.com/@hieunv/understanding-hexagonal-architecture-through-a-practical-application-2f2d28f604d9?source=friends_link&sk=beb3cd84702c29debd2e703812157353).
+
 ## What is Hexagonal Architecture?
 
 Hexagonal Architecture is an architectural pattern that separates the core business logic of an application from external technical details such as databases, user interfaces, or external services. It's visualized as a hexagon with:
